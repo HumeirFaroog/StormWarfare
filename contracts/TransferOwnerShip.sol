@@ -3,8 +3,6 @@ pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
-//import "@openzeppelin/contracts/access/Ownable.sol";
-// import "./Wider.sol";
 
 
 interface IERC4907 {
@@ -40,7 +38,7 @@ interface IERC4907 {
     
 }
 
-contract ERC4907 is ERC721, IERC4907 {
+contract TransferOwnerShip is ERC721, IERC4907 {
     struct UserInfo 
     {
         address user;   // address of user role

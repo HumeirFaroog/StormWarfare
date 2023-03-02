@@ -10,12 +10,12 @@ const hre = require("hardhat");
 
 async function main() {
   // We get the contract to deploy
-  const ERC4907 = await hre.ethers.getContractFactory("TransferRenting")
-  const eRC4907 = await ERC4907.deploy();
+  const ERC4907 = await hre.ethers.getContractFactory("LootBoxNft")
+  const eRC4907 = await ERC4907.deploy("LootBox", "LB", "LootBox");
 
   await eRC4907.deployed();
 
-  console.log("TransferRenting deployed to:", eRC4907.address);
+  console.log("LootBox deployed to:", eRC4907.address);
 
 }
 

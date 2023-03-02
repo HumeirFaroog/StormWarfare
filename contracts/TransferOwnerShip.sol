@@ -1,8 +1,17 @@
-// SPDX-License-Identifier: CC0-1.0
-pragma solidity ^0.8.17;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
+
+
+
 
 
 interface IERC4907 {
@@ -11,10 +20,9 @@ interface IERC4907 {
     /// @notice Emitted when the `user` of an NFT or the `expires` of the `user` is changed
     /// The zero address for user indicates that there is no user address
     event UpdateUser(uint256 indexed tokenId, address indexed user, uint64 expires);
-    event TokenOwnershipTransferred(address indexed previousOwner, address indexed newOwner, uint256 tokenId);
     // event TransferOwner(uint256 indexed tokenId, address newOwner);
     //event OwnershipTransferred(address indexed previousOwner, address indexed newOwner); //adding
-
+   event TokenOwnershipTransferred(address indexed previousOwner, address indexed newOwner, uint256 indexed tokenId);
     /// @notice set the user and expires of an NFT
     /// @dev The zero address indicates there is no user
     /// Throws if `tokenId` is not valid NFT
@@ -35,56 +43,82 @@ interface IERC4907 {
     function userExpires(uint256 tokenId) external view returns(uint256);
 
   //  function transferOwnership(address newOwner) external;
-    
+
 }
 
-contract TransferOwnerShip is ERC721, IERC4907 {
-    struct UserInfo 
+contract TransferRenting is ERC721, ERC721URIStorage, ERC721Burnable, Ownable, IERC4907 {
+
+    struct UserInfo
     {
         address user;   // address of user role
         uint64 expires; // unix timestamp, user expires
-        // uint256 tokenId;
     }
 
-    mapping (uint256  => UserInfo) internal _users;
-
-    mapping(address => mapping (address => uint256)) allowed; //adding 
-    address public _owner; // adding 
 
 
-    constructor(string memory name_, string memory symbol_)
-     ERC721(name_, symbol_)
-     {
-        _owner=msg.sender; //adding
-        emit TokenOwnershipTransferred(address(0), _msgSender(), uint256(0)); 
-     }
-    
+    mapping (uint256  => UserInfo) internal _users;   //
+
+    mapping(address => mapping (address => uint256)) allowed; //adding
+    address public _owner; // adding
+
+    string public baseURI = "https://stormwarfare.s3.eu-central-1.amazonaws.com";
+
+
+
+    constructor()
+     ERC721("StormWarfare", "SW") {
+
+          _owner= msg.sender;
+
+      }
+   
+   // Check the contract owner to executed , 
+
+    modifier onlyOwner() override  virtual {
+        require(_owner == msg.sender, "Ownable: caller is not the owner");
+        _;
+    }
+
+
     /// @notice set the user and expires of an NFT
     /// @dev The zero address indicates there is no user
     /// Throws if `tokenId` is not valid NFT
     /// @param user  The new user of the NFT
     /// @param expires  UNIX timestamp, The new user could use the NFT before expires
+    
     function setUser(uint256 tokenId, address user, uint64 expires) public override virtual{
         require(_isApprovedOrOwner(msg.sender, tokenId), "ERC4907: transfer caller is not owner nor approved");
         UserInfo storage info =  _users[tokenId];
-
-        //require(info.expires < block.timestamp, "Already rentedto someone"
+    
+        require(info.expires < block.timestamp, "Already rented to someone");
 
         info.user = user;
         info.expires = expires;
         emit UpdateUser(tokenId, user, expires);
     }
 
-    function transferOwnership(address newOwner, uint256 tokenId) public virtual payable  {
-      // require(newOwner != address(0), "Ownable: new owner is the zero address");
-        require(_isApprovedOrOwner(msg.sender, tokenId));
-        ownerOf(tokenId) == newOwner;
-        _transfer(_owner, newOwner, tokenId);
-        
+
+
+    function transferOwnership(address owner, address newOwner, uint256 tokenId) internal virtual {
+        require(ERC721.ownerOf(tokenId) == owner, "ERC721: transfer from incorrect owner");
+         require(getApproved(tokenId) != address(0), "You have to  approved first");
+        require(newOwner != address(0), "ERC721: transfer to the zero address");
+
+        _beforeTokenTransfer(owner, newOwner, tokenId);
+
+        // Check that tokenId was not transferred by `_beforeTokenTransfer` hook
+        require(ERC721.ownerOf(tokenId) == owner, "ERC721: transfer from incorrect owner");
+
+        // Clear approvals from the previous owner
+
+
+        emit Transfer(owner, newOwner, tokenId);
+
+        _afterTokenTransfer(owner, newOwner, tokenId);
     }
 
-    // require(ownerOf(1) == _owner, "Already bought");
-    // _transfer(_owner, msg.sender, 1);
+
+
 
     /// @notice Get the user address of an NFT
     /// @dev The zero address indicates that there is no user or the user is expired
@@ -95,7 +129,7 @@ contract TransferOwnerShip is ERC721, IERC4907 {
             return  _users[tokenId].user;
         }
         else{
-        
+
             return ownerOf(tokenId);
             // return address(0);
         }
@@ -105,18 +139,35 @@ contract TransferOwnerShip is ERC721, IERC4907 {
     /// @dev The zero value indicates that there is no user
     /// @param tokenId The NFT to get the user expires for
     /// @return The user expires for this NFT
-    function userExpires(uint256 tokenId) public view override virtual returns(uint256){
-       if( uint256(_users[tokenId].expires) >=  block.timestamp){
+
+    function ownerExpires(uint256 tokenId) public view  virtual returns(uint256){
+     if( uint256(_users[tokenId].expires) >=  block.timestamp){  
+         
             return  _users[tokenId].expires;
-        }  else{
-              return 115792089237316195423570985008687907853269984665640564039457584007913129639935;
-       }
-    }  
+        }  else {
+        return    block.timestamp + 365000 days;
+        }
+       
+           
+    }
+
+    function userExpires(uint256 tokenId) public view override virtual returns(uint256){
+            return  _users[tokenId].expires;
+    
+    }
 
     /// @dev See {IERC165-supportsInterface}.
+    //check if the address account supports the given interfaceId
+    // TO restrict what kind of contracts that can be supplied to the function. Each contract you want to allow for needs to implement ERC165
+
     function supportsInterface(bytes4 interfaceId) public view  override virtual  returns (bool) {
         return interfaceId == type(IERC4907).interfaceId || super.supportsInterface(interfaceId);
     }
+
+
+   //Hook that is called before any transfer of tokens. This includes minting and burning.
+   //from && to  cannot be the zero addresses.
+
 
     function _beforeTokenTransfer(
         address from,
@@ -131,17 +182,66 @@ contract TransferOwnerShip is ERC721, IERC4907 {
         }
     }
 
-    function mint(uint256 tokenId) public {
-        _mint(msg.sender, tokenId);
-    }
+      
+    //Show the current time 
 
     function time() public view returns (uint256) {
         return block.timestamp;
     }
-      //adding
-    //     modifier onlyOwner()   virtual {
-    //     require(_owner == _msgSender(), "Ownable: caller is not the owner");
-    //     _;
-    // }
 
-}  
+        /**
+     * @dev Returns whether `spender` is allowed to manage `tokenId`.
+     *
+     * Requirements:
+     *
+     * - `tokenId` must exist.
+     */
+
+    function _isApprovedOrOwner(address user, uint256 tokenId) internal view virtual   override returns (bool) {
+        require(_exists(tokenId), " operator query for nonexistent token");
+        address owner = ERC721.ownerOf(tokenId);
+        // console.log("spender %s", user);
+        // console.log("getApproved %s", getApproved(tokenId);
+        return (user == owner || isApprovedForAll(owner, user) || getApproved(tokenId) == user);
+    }
+      //adding
+
+    function changeBaseURI(string memory baseURI_) public onlyOwner {
+        baseURI = baseURI_;
+    }
+
+
+    //base URI for all token IDs.It is automatically added as a prefix to the value returned in tokenURI,
+
+    function _baseURI() internal view override returns (string memory) {
+         return   baseURI;
+    }
+
+    //The _safeMint flavor of minting causes the recipient of the tokens, if it is a smart contract, to react upon receipt of the tokens.
+
+    function safeMint(address to, uint256 tokenId, string memory uri)
+        public
+
+    {
+        _safeMint(to, tokenId);
+        _setTokenURI(tokenId, uri);
+    }
+
+
+    // Destroys amount tokens from account, reducing the total supply.
+
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
+        super._burn(tokenId);
+    }
+
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override(ERC721, ERC721URIStorage)
+        returns (string memory)
+    {
+        return super.tokenURI(tokenId);
+    }
+
+        function _afterTokenTransfer(address from, address to, uint256 firstTokenId) internal virtual {}
+}
